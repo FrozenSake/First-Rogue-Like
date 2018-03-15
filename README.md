@@ -4,10 +4,13 @@ Hi, welcome to this repo for my roguelike. I've been working with the rogue basi
 
 ### BUG LOG
 - Fireball possibly not hitting multiple burnable targets.
+
 TODO: Figure out if it's even true
 
 - Bolt Scrolls don't appear to work
+
 ERROR: Bolt Scrolls don't work
+
 CAUSE: on_line() function does not appear to work
 
 ### TODO
@@ -16,10 +19,15 @@ CAUSE: on_line() function does not appear to work
 - More items
 - More types of things!
 - Loading old saves (instead of just the active one)
+
     Method: Perhaps something like a list of all "alive" players, that can be iterated to make a menu?
+	
         How do we save the array and load it safely?
+		
     Alternative:
+	
         Can we crawl folders in the save folder and use their names, excluding Morgue?
+		
 
 ### COMPLETED TASKS:
 - Dungeon Generator - Rectangle rooms and straight hallways
