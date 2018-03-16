@@ -7,11 +7,16 @@ Hi, welcome to this repo for my roguelike. I've been working with the rogue basi
 
 TODO: Figure out if it's even true
 
-- Bolt Scrolls don't appear to work
+- If an elemental kills another with its death explosion, it will die twice, once with no name.
 
-ERROR: Bolt Scrolls don't work
+TODO: Ignore.
 
-CAUSE: on_line() function does not appear to work
+### RECENTLY FIXED BUGS
+
+- Bolt Scrolls Don't Work
+
+RESOLVE: Bolt scrolls fixed. on_line() fixed, targets_on_line() added.
+TODO: Continue to observe to ensure it always works, and there are no failure cases. Only failure case would be player on line and no monster (As far as I can tell)
 
 ### TODO
 - More varied AI

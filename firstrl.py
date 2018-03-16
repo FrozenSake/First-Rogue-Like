@@ -1,49 +1,3 @@
-'''
-BUG LOG
-
-Fireball possibly not hitting multiple burnable targets.
-TODO: Figure out if it's even true
-
-BOLT SCROLLS ARE DERP
-ERROR: Bolt Scrolls don't work
-CAUSE: on_line() function sucks donkey butt (doesn't actually work currently)
-
-'''
-'''
-TODO
-More varied AI
-More monsters
-More items
-More types of things!
-Loading old saves (instead of just the active one)
-    Method: Perhaps something like a list of all "alive" players, that can be iterated to make a menu?
-        How do we save the array and load it safely?
-    Alternative:
-        Can we crawl folders in the save folder and use their names, excluding Morgue?
-'''
-'''
-COMPLETED TASKS:
-Dungeon Generator - Rectangle rooms and straight hallways
-Field of View
-Fog of War
-General graphics, rendering, etc.
-Monster spawning
-Combat
-GUI
-Inventory and Items
-Win condition!
-Traps
-Pit traps random location
-Saving and Loading of floors
-'''
-'''
-MAJOR LEARNING POINTS:
-Integer division in Python 3 - / vs //
-Composition versus Inheritance
-Brittle data structures / data structure introduction
-OS commands
-'''
-
 # Imports
 import libtcodpy as libtcod ## http://roguecentral.org/doryen/data/libtcod/doc/1.5.1/index2.html
 import math ## https://docs.python.org/3/library/math.html
@@ -91,6 +45,8 @@ FIREBALL_RADIUS = 3
 FIREBALL_DAMAGE = 12
 BOLT_RANGE = 5
 BOLT_POWER = 7
+
+MAX_MENU_SIZE = 26
 
 CURRENT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
 SAVE_DIRECTORY = CURRENT_DIRECTORY + '\\saves\\'
@@ -190,19 +146,18 @@ class Object:
         else:
             self.move(dx, dy)
         
-        
     def distance_to(self, other):
         dx = other.x - self.x
         dy = other.y - self.y
         return math.sqrt(dx ** 2 + dy ** 2)
         
+    def distance(self, x, y):
+        return math.sqrt((x - self.x) ** 2 + (y - self.y) ** 2)
+        
     def send_to_back(self):
         global objects
         objects.remove(self)
         objects.insert(0, self)
-    
-    def distance(self, x, y):
-        return math.sqrt((x - self.x) ** 2 + (y - self.y) ** 2)
         
     def burn(self):
         if self.burnable:
@@ -218,6 +173,7 @@ class Object:
             self.fighter.poison_turns -= 1
             if self.fighter.poison_turns <= 0:
                 self.fighter.poisoned = False
+                self.fighter.poison_damage = 0
    
 class Fighter:
     def __init__(self, hp, defense, power, xp, death_function = None):
@@ -231,17 +187,14 @@ class Fighter:
         self.poison_turns = 0
         self.poison_damage = 0
         
-    @property
     def power(self):
         bonus = sum(equipment.power_bonus for equipment in get_all_equipped(self.owner))
         return self.base_power + bonus
         
-    @property
     def defense(self):
         bonus = sum(equipment.defense_bonus for equipment in get_all_equipped(self.owner))
         return self.base_defense + bonus
         
-    @property
     def max_hp(self):
         bonus = sum(equipment.max_hp_bonus for equipment in get_all_equipped(self.owner))
         return self.base_max_hp + bonus
@@ -255,12 +208,13 @@ class Fighter:
     def die(self):
         function = self.death_function
         if function is not None:
-            function(self.owner)
+            function(self.owner) 
+            #What if it doesn't have one, is this fine? Do we need to close out this with an Else: to a generic death function?
         if self.owner != player:
             player.fighter.xp += self.xp
     
     def attack(self, target):
-        damage = self.power - target.fighter.defense + libtcod.random_get_int(0, -3, 2)
+        damage = self.power() - target.fighter.defense() + libtcod.random_get_int(0, -3, 2)
         
         if damage > 0:
             message(self.owner.name.capitalize() + " attacks " + target.name + " for " + str(damage) + " damage.")
@@ -272,8 +226,8 @@ class Fighter:
             
     def heal(self, amount):
         self.hp += amount
-        if self.hp > self.max_hp:
-            self.hp = self.max_hp
+        if self.hp > self.max_hp():
+            self.hp = self.max_hp()
             
     def check_level_up(self):
         level_up_xp = LEVEL_UP_BASE + ((player.level - 1) * LEVEL_UP_FACTOR)
@@ -295,12 +249,14 @@ class Fighter:
     def get_poisoned(self, turns, strength):
         self.poisoned = True
         self.poison_turns += turns
-        self.poison_damage = max(self.poison_damage, strength)
+        self.poison_damage += strength
         
     def spell(self, target):
         if self.owner.ai:
             self.owner.ai.spell(target)
-        
+
+# Monster AI Classes
+            
 class BasicMonster:
     def take_turn(self):
         monster = self.owner
@@ -371,20 +327,21 @@ class ElementalMonster:
     def spell(self, target):
         if target.fighter:
             if self.type == "Unaspected":
-                message("The bubbling, turgid field of unaspected energy coaleseces into a hand, seeming gripping nothing. You feel agony.")
+                message("The bubbling, turgid field of unaspected energy coalesces into a hand, seeming gripping nothing. You feel agony.")
                 target.fighter.take_damage(dungeon_level * 2)
             elif self.type == "Fire":
                 message("")
             elif self.type == "Water":
                 message("")
-            
+
+#Items and Equipment                
         
 class Item:
     def __init__(self, use_function = None):
         self.use_function = use_function
     
     def pick_up(self):
-        if len(inventory) >= 26:
+        if len(inventory) >= MAX_MENU_SIZE:
             message("Your inventory is full, cannot pick up " + self.owner.name + ".", libtcod.red)
         else:
             inventory.append(self. owner)
@@ -435,7 +392,9 @@ class Equipment:
         
         
     def dequip(self):
-        if not self.is_equipped: return
+        if not self.is_equipped: 
+            message("That isn't even equipped, what are you doing?", libtcod.red)
+            return
         self.is_equipped = False
         message("Dequipped " + self.owner.name + " from " + self.slot + ".", libtcod.light_yellow)
 
@@ -506,7 +465,7 @@ class Room:
         return (center_x, center_y)
     
     def intersect(self, other):
-        # true if this rectangle intersects another
+        # true if this rectangle intersects another - potential issue if width is negative? height negative?
         return (self.x1 <= other.x2 and self.x2 >= other.x1 and self.y1 <= other.y2 and self.y2 >= other.y1)
         
     def get_type(self):
@@ -529,13 +488,13 @@ def handle_keys():
     
     if game_state == 'playing':
         # Movement Keys
-        if key.vk == libtcod.KEY_KP8 or key.vk == libtcod.KEY_UP:
+        if key.vk == libtcod.KEY_KP8:
             player_move_or_attack(0, -1)
-        elif key.vk == libtcod.KEY_KP2 or key.vk == libtcod.KEY_DOWN:
+        elif key.vk == libtcod.KEY_KP2:
             player_move_or_attack(0, 1)
-        elif key.vk == libtcod.KEY_KP4 or key.vk == libtcod.KEY_LEFT:
+        elif key.vk == libtcod.KEY_KP4:
             player_move_or_attack(-1, 0)
-        elif key.vk == libtcod.KEY_KP6 or key.vk == libtcod.KEY_RIGHT:
+        elif key.vk == libtcod.KEY_KP6:
             player_move_or_attack(1, 0)
         elif key.vk == libtcod.KEY_KP7:
             player_move_or_attack(-1, -1)
@@ -551,28 +510,28 @@ def handle_keys():
         else:
             key_char = chr(key.c)
             
-            if key_char == "g":
+            if key_char == "g": #Get Items
                 for object in objects:
                     if object.x == player.x and object.y == player.y and object.item:
                         if object.name == "The Rubber DuckGuffin!":
                             winnable = True
                         object.item.pick_up()
                         break
-            elif key_char == "i":
+            elif key_char == "i": # Use items in inventory
                 chosen_item = inventory_menu("Select an item with the corresponding key, or any other to cancel.\n")
                 if chosen_item is not None:
                     chosen_item.use()
-            elif key_char == "d":
+            elif key_char == "d": # Drop items in inventory
                 chosen_item = inventory_menu("To drop an item press the corresponding key.\n")
                 if chosen_item is not None:
                     chosen_item.drop()
-            elif key_char == "c":
+            elif key_char == "c": # Character status
                 level_up_xp = LEVEL_UP_BASE + ((player.level - 1) * LEVEL_UP_FACTOR)
-                msgbox("Character Information\n\nLevel: " + str(player.level) + "\nExperience: " + str(player.fighter.xp) + "\nExperience to level up: " + str(level_up_xp) + " \n\nMaximum HP: " + str(player.fighter.max_hp) + "\nAttack: " + str(player.fighter.power) + "\nDefense: " + str(player.fighter.defense), CHARACTER_SCREEN_WIDTH)
-            elif key_char == "," and key.shift:
+                msgbox("Character Information\n\nLevel: " + str(player.level) + "\nExperience: " + str(player.fighter.xp) + "\nExperience to level up: " + str(level_up_xp) + " \n\nMaximum HP: " + str(player.fighter.max_hp()) + "\nAttack: " + str(player.fighter.power()) + "\nDefense: " + str(player.fighter.defense()), CHARACTER_SCREEN_WIDTH)
+            elif key_char == "," and key.shift: # < to go up
                 if stairsup.x == player.x and stairsup.y == player.y:
                     previous_level()
-            elif key_char == "." and key.shift:
+            elif key_char == "." and key.shift: # > to go down
                 if stairsdown.x == player.x and stairsdown.y == player.y:
                     next_level()
                     
@@ -582,9 +541,6 @@ def place_objects(room):
     global max_monsters, monster_chances
     global max_items, item_chances
     global current_traps, max_traps, trap_chances
-    
-    compile_monster_table()
-    compile_item_table()
     
     num_monsters = libtcod.random_get_int(0, 0, max_monsters)
     
@@ -596,6 +552,7 @@ def place_objects(room):
             choice = random_choice(monster_chances)
             monster = roll_monster_table(choice, x, y)
             objects.append(monster)
+        
     
     num_items = libtcod.random_get_int(0, 0, max_items)
     
@@ -621,6 +578,7 @@ def place_objects(room):
             if not is_blocked(x, y, True):
                 choice = random_choice(trap_chances)
                 trap = roll_trap_table(choice, x, y)
+                current_traps += 1
                 objects.append(trap)
                 trap.send_to_back()
                      
@@ -660,6 +618,8 @@ def make_map():
     global map, objects, stairsup, stairsdown
     
     compile_trap_table()
+    compile_monster_table()
+    compile_item_table()
     
     objects = [player]
     
@@ -799,7 +759,7 @@ def render_all():
         libtcod.console_print_ex(panel, MSG_X, y, libtcod.BKGND_NONE, libtcod.LEFT, line)
         y += 1
     
-    render_bar(1, 1, BAR_WIDTH, "HP", player.fighter.hp, player.fighter.max_hp, libtcod.light_red, libtcod.darker_red)
+    render_bar(1, 1, BAR_WIDTH, "HP", player.fighter.hp, player.fighter.max_hp(), libtcod.light_red, libtcod.darker_red)
     
     libtcod.console_set_default_foreground(panel,libtcod.light_gray)
     libtcod.console_print_ex(panel, 1, 0, libtcod.BKGND_NONE, libtcod.LEFT, get_names_under_mouse())
@@ -876,36 +836,49 @@ def create_v_tunnel(y1, y2, x):
         map[x][y].blocked = False
         map[x][y].block_sight = False
 
-def on_line (x1, y1, x2 = None, y2 = None, slope = None):
+def line (x1, y1, x2 = None, y2 = None, slope = None):
     ## 0,0 -1, 2
-    print("we're in on_line")
+    #print("we're in on_line and x1: " + str(x1) + " and x2:" + str(x2) + " and y1: " + str(y1) + " and y2: " + str(y2))
     tiles_on_line = []
     if x2 and y2:
         (rise, run) = get_slope(x1, y1, x2, y2, as_fraction = True)
-        print("we got a rise of " + str(rise) + " and a run of " + str(run) + " from the get_slope function")
+        #print("we got a rise of " + str(rise) + " and a run of " + str(run) + " from the get_slope function")
         
     if rise == 0: ## ISSUE: using + for i/j, so co-ordinates 1 and 2 have to be properly aligned. No bueno.
-        print("rise is 0!")
+        #print("rise is 0!")
         i = 0
-        while i < (max(y1, y2) - min (y1, y2)):
-            tiles_on_line.append((x1, y1 + i))
+        while i < (max(x1, x2) - min (x1, x2)):
+            #print(str(min(x1, x2) + i) + " " + str(y1) + " is being added")
+            tiles_on_line.append((min(x1, x2) + i, y1))
             i += 1
     elif run == 0:
-        print("run is zero!")
+        #print("run is zero!")
         j = 0
-        while j < (max(x1, x2) - min (x1, x2)):
-            tiles_on_line.append((x1 + j, y1))
+        while j < (max(y1, y2) - min(y1, y2)):
+            #print(str(x1) + " " + str(min(y1, y2) + j) + " is being added")
+            tiles_on_line.append((x1, min(y1, y2) + j))
             j += 1
     else:
         i = 0
         while i <= rise:
             j = 0
             while j <= run:
-                tiles_on_line.append((x1 + j, y1 + i))
+                tiles_on_line.append((x1 + i, y1 + j))
                 j += 1
             i += 1
     return tiles_on_line       
-        
+
+def targets_on_line(x1, y1, x2 = None, y2 = None, slope = None):
+    theLine = line(x1, y1, x2, y2, slope)
+    targets_on_line = []
+    for xy in theLine:
+        for object in objects:
+            if object.x == xy[0] and object.y == xy[1]:
+                targets_on_line.append(object)
+    if targets_on_line == []:
+        return None
+    return targets_on_line                
+    
 def get_slope (x1, y1, x2, y2, as_fraction = False):
     rise = y1 - y2
     run = x2 - x1
@@ -961,7 +934,7 @@ def get_names_under_mouse():
     return names.capitalize()
     
 def menu(header, options, width):
-    if len(options) > 26: raise ValueError("Cannot have a menu with more than 26 options.")
+    if len(options) > MAX_MENU_SIZE: raise ValueError("Cannot have a menu with more than 26 options.")
     
     header_height = libtcod.console_get_height_rect(console, 0, 0, width, SCREEN_HEIGHT, header)
     if header == "":
@@ -1100,9 +1073,9 @@ def target_monster(max_range = None):
 
 def new_game():
     global player, inventory, game_msgs, game_state, dungeon_level, travel_direction, winnable, visited_floors
-
-    msgbox("Please enter your name, press enter or escape when you're done.")
+    
     name = ""
+    msgbox("Please enter your name, press enter or escape when you're done.")
     key = libtcod.console_wait_for_keypress(True)
     while not key.vk == libtcod.KEY_ENTER and not key.vk == libtcod.KEY_ESCAPE and not key.vk == libtcod.KEY_KPENTER:
         name += chr(key.c)
@@ -1150,18 +1123,6 @@ def save_game():
     file['travel_direction'] = travel_direction
     file.close()
     
-def make_morgue():
-    file = shelve.open(SAVE_DIRECTORY + "morgue\\" + player.name, 'n')
-    file['map'] = map
-    file['objects'] = objects
-    file['player_index'] = objects.index(player)
-    file['inventory'] = inventory
-    file['game_msgs'] = game_msgs
-    file['game_state'] = game_state
-    file.close()
-    ## deletes the player's entire save folder when they die - cannot use os. as the functions are too limited.
-    shutil.rmtree(SAVE_DIRECTORY + player.name + "\\")
-
 def load_game():
     global map, objects, player, inventory, game_msgs, game_state, stairsdown, stairsup, dungeon_level
     
@@ -1179,6 +1140,18 @@ def load_game():
     file.close()
     
     initialize_fov()
+    
+def make_morgue():
+    file = shelve.open(SAVE_DIRECTORY + "morgue\\" + player.name, 'n')
+    file['map'] = map
+    file['objects'] = objects
+    file['player_index'] = objects.index(player)
+    file['inventory'] = inventory
+    file['game_msgs'] = game_msgs
+    file['game_state'] = game_state
+    file.close()
+    ## deletes the player's entire save folder when they die - cannot use os. as the functions are too limited.
+    shutil.rmtree(SAVE_DIRECTORY + player.name + "\\")
 
 def save_floor():
     global map, objects, stairsup, stairsdown, player
@@ -1217,12 +1190,13 @@ def next_level(trap = False):
     if not trap:
         message("You head down the stairs. Spooky!", libtcod.light_violet)
         message("You made it down the stairs. Phew, it was hard to remember how to do that.", libtcod.light_violet)
-        player.fighter.heal(1)
         dungeon_level += 1
     elif trap:
         message("You stand up and brush yourself off. Phew... now where are you?", libtcod.light_violet)
         player.fighter.take_damage(1)
-        if dungeon_level == 8 or 9 or 10:
+        if dungeon_level == 10:
+            distance = 0
+        elif dungeon_level == 8 or 9:
             distance = 1
         else:
             distance = libtcod.random_get_int(0, 1, 3)
@@ -1238,6 +1212,8 @@ def next_level(trap = False):
                 player.y = libtcod.random_get_int(0, 0, MAP_HEIGHT)
                 if not map[player.x][player.y].blocked:
                     placed = True
+        else:
+            player.fighter.heal(5)
                     
         initialize_fov()
     else:
@@ -1267,13 +1243,16 @@ def previous_level():
         make_morgue()
         main_menu()
     else:
-        message("You head up the stairs... but don't recognize anything. Do you have a brain injury?")
+        
         travel_direction = "up"
         if dungeon_level not in visited_floors:
+            message("You head up the stairs... but don't recognize anything. Do you have a brain injury?")
             visited_floors.append(dungeon_level)
             make_map()
             initialize_fov()
+            player.fighter.heal(5)
         else:
+            message("You head up the stairs... Well, I guess you're here now.")
             load_floor()
             initialize_fov()
     
@@ -1363,13 +1342,13 @@ def compile_monster_table(): ## Reflect any changes here in roll_monster_table()
     monster_chances['giant mushroom'] = from_dungeon_level([[9, 2], [19, 4], [3, 6]])
     monster_chances['bandit'] = from_dungeon_level([[12, 1], [15, 2], [8, 3], [6, 4]])
     monster_chances['skeleton'] = from_dungeon_level([[1, 1], [4, 2], [5, 4], [20, 8]])
-    monster_chances['racoon'] = from_dungeon_level([[20, 1], [15, 2], [10, 3], [2, 4]])
+    monster_chances['raccoon'] = from_dungeon_level([[20, 1], [15, 2], [10, 3], [2, 4]])
     monster_chances['squirrel'] = from_dungeon_level([[20, 1], [15, 2], [10, 3], [2, 4]])
     monster_chances['elemental'] = from_dungeon_level([[2, 3], [3, 4], [6, 5], [12, 7], [30, 10]])
   
 def roll_monster_table(choice, x, y):
     if choice == "orc":
-        fighter_component = Fighter(hp = 10, defense = 0, power = 1, xp = 35, death_function = monster_death)
+        fighter_component = Fighter(hp = 8, defense = 0, power = 1, xp = 30, death_function = monster_death)
         ai_component = BasicMonster()
         monster = Object(x, y, 'o', 'orc', libtcod.desaturated_green, blocks = True, fighter = fighter_component, ai = ai_component)
     elif choice == "troll":
@@ -1385,23 +1364,23 @@ def roll_monster_table(choice, x, y):
         ai_component = BasicMonster()
         monster = Object(x, y, 'b', 'undead bee', libtcod.Color(95, 95, 95), blocks = True, fighter = fighter_component, ai = ai_component)
     elif choice == "bandit":
-        fighter_component = Fighter(hp = 12, defense = 0, power = 2, xp = 45, death_function = monster_death)
+        fighter_component = Fighter(hp = 12, defense = 0, power = 2, xp = 50, death_function = monster_death)
         ai_component = BasicMonster()
         monster = Object(x, y, 'B', 'bandit', libtcod.sepia, blocks = True, fighter = fighter_component, ai = ai_component)
     elif choice == "skeleton":
-        fighter_component = Fighter(hp = 6, defense = 1, power = 4, xp = 105, death_function = undead_death)
+        fighter_component = Fighter(hp = 6, defense = 1, power = 4, xp = 185, death_function = undead_death)
         ai_component = BasicMonster()
         monster = Object(x, y, 's', 'skeleton', libtcod.Color(95, 95, 95), blocks = True, fighter = fighter_component, ai = ai_component)
-    elif choice == "racoon":
+    elif choice == "raccoon":
         fighter_component = Fighter(hp = 2, defense = 0, power = 1, xp = 5, death_function = monster_death)
         ai_component = AnimalMonster()
-        monster = Object(x, y, 'r', 'racoon', libtcod.sepia, blocks = True, fighter = fighter_component, ai = ai_component)
+        monster = Object(x, y, 'r', 'raccoon', libtcod.sepia, blocks = True, fighter = fighter_component, ai = ai_component)
     elif choice == "squirrel":
         fighter_component = Fighter(hp = 1, defense = 0, power = 1, xp = 2, death_function = monster_death)
         ai_component = AnimalMonster()
         monster = Object(x, y, 's', 'squirrel', libtcod.sepia, blocks = True, fighter = fighter_component, ai = ai_component)
     elif choice == "elemental":
-        fighter_component = Fighter(hp = 28, defense = 4, power = 6, xp = 305, death_function = elemental_death)
+        fighter_component = Fighter(hp = 26, defense = 4, power = 6, xp = 505, death_function = elemental_death)
         ai_component = ElementalMonster("Unaspected")
         monster = Object(x, y, 'E', 'Unaspected Elemental', libtcod.Color(100, 100, 100), blocks = True, fighter = fighter_component, ai = ai_component)
     return monster
@@ -1428,9 +1407,10 @@ def undead_death(monster):
 
 def elemental_death(monster):
     message(monster.name.capitalize() + " writhes and roils for a moment before exploding into a cataclysmic wave of " + monster.ai.type + " energy.")
+    objects.remove(monster)
     for obj in objects:
         if ((obj.x == monster.x - 2 or obj.x == monster.x - 1 or obj.x == monster.x or obj.x == monster.x + 1 or obj.x == monster.x + 2) and (obj.y == monster.y - 2 or obj.y == monster.y - 1 or obj.y == monster.y or obj.y == monster.y + 1 or obj.y == monster.y + 2)) and obj.fighter and obj is not monster:
-            obj.fighter.take_damage(dungeon_level // 2)
+            obj.fighter.take_damage(max(dungeon_level // 2, 1))
             message(obj.name.capitalize() + " is caught in the explosion")
     message("You gain " + str(monster.fighter.xp) + " experience.", libtcod.orange)
     monster.char = " "
@@ -1439,7 +1419,6 @@ def elemental_death(monster):
     monster.fighter = None
     monster.ai = None
     monster.name = ""
-    monster.send_to_back()
     
 def compile_item_table(): ## Reflect any changes here in roll_item_table()
     global max_items, item_chances
@@ -1450,9 +1429,9 @@ def compile_item_table(): ## Reflect any changes here in roll_item_table()
     item_chances['lightning'] = from_dungeon_level([[2, 1], [10, 3], [25, 5]])
     item_chances['fireball'] = from_dungeon_level([[1, 1], [2, 2], [4, 3], [9, 5], [25, 6]])
     item_chances['confuse'] = from_dungeon_level([[5, 1], [10, 2], [15, 3]])
-    item_chances['sword'] = from_dungeon_level([[20, 1], [25, 2]])
+    item_chances['sword'] = from_dungeon_level([[20, 1], [25, 2], [20, 3], [5, 4]])
     item_chances['shield'] = from_dungeon_level([[5, 1], [15, 2], [20, 3]])
-    item_chances['bolt'] = from_dungeon_level([[100, 1], [4, 2], [8, 5], [15, 6]])
+    item_chances['bolt'] = from_dungeon_level([[8, 1], [4, 2], [8, 5], [15, 6]])
 
 def roll_item_table(choice, x, y):
     if choice == "heal":
@@ -1479,7 +1458,7 @@ def roll_item_table(choice, x, y):
     return item
 
 def cast_heal():
-    if player.fighter.hp == player.fighter.max_hp:
+    if player.fighter.hp == player.fighter.max_hp():
         message("You are already at full health. Amazing.", libtcod.red)
         return "cancelled"
         
@@ -1501,13 +1480,16 @@ def cast_lightning():
 def cast_bolt(caster = None):
     message("Left-click an enemy to hit it and everything between you and it with a bolt, or right-click to cancel.", libtcod.light_cyan)
     monster = target_monster(BOLT_RANGE)
-    print("A monster was selected")
+    #print("A monster was selected")
     if monster is None: return "cancelled"
     if caster == None:
         caster = player
-    targets = on_line(caster.x, caster.y, monster.x, monster.y)
+    targets = targets_on_line(caster.x, caster.y, monster.x, monster.y)
+    if targets == []:
+        message("No targets!")
+        return
     for target in targets:
-        print("Iterating through targets")
+        #print("Iterating through targets")
         if target.fighter and target != player:
             message("The bolt rips through " + monster.name, libtcod.brass)
             target.fighter.take_damage(BOLT_POWER)
