@@ -18,6 +18,23 @@ TODO: Ignore.
 RESOLVE: Bolt scrolls fixed. on_line() fixed, targets_on_line() added.
 TODO: Continue to observe to ensure it always works, and there are no failure cases. Only failure case would be player on line and no monster (As far as I can tell)
 
+### V0.2 Patch Notes
+- Inventory Size was hardcoded. Now MAX_MENU_SIZE constant in use.
+- Poison damage changed from max(new, old) to additive.
+- Poison damage now sets to 0 on clearing (see previous note for reason).
+- Error message added for unequipping an item that isn't equipped.
+- Controls changed to keypad only.
+- Compile_Monsters and Compile_Items changed to make_map to reduce calls and optimize performance.
+- Current_Traps iterates properly. (I think)
+- Messages for going up floors clarified - one for new floor, one for old floor.
+- Fixed on_line(), renamed line() returns a list of xy coordinates on a line in form of tuples
+- Added targets_on_line() returns a list of objects. Utilizes line()
+- RESOLVED BUG: on_line() doesn't work
+- Elemental Death iterated through. Introduced infinite loop bug. Fixed infinite loop bug. Elemental death mecahnics work.
+- Added new bug: Elementals killing each other on death causes a weird interaction.
+- Minor enemy balancing occured.
+
+
 ### TODO
 - More varied AI
 - More monsters
